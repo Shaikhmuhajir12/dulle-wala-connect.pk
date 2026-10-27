@@ -3,30 +3,51 @@ name: Build Dulle Wala Connect APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create Android project
+      - name: Accept Android SDK Licenses
+        shell: bash
         run: |
-          mkdir -p app/src/main/java/com/dullewala/connect
+          set -e
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
+          fi
+          yes | "$SDKMANAGER" --licenses || true
+
+      - name: Install Android Packages
+        shell: bash
+        run: |
+          set -e
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
+          fi
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Create Android Project
+        shell: bash
+        run: |
+          mkdir -p app/src/main/java/com/dullewalaconnect/app
           mkdir -p app/src/main/res/values
 
           cat > settings.gradle <<'EOF'
@@ -37,7 +58,6 @@ jobs:
                   gradlePluginPortal()
               }
           }
-
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
               repositories {
@@ -45,7 +65,6 @@ jobs:
                   mavenCentral()
               }
           }
-
           rootProject.name = "DulleWalaConnect"
           include(":app")
           EOF
@@ -56,69 +75,66 @@ jobs:
           }
           EOF
 
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m
+          android.useAndroidX=true
+          EOF
+
           cat > app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
           }
 
           android {
-              namespace 'com.dullewala.connect'
+              namespace 'com.dullewalaconnect.app'
               compileSdk 35
 
               defaultConfig {
-                  applicationId "com.dullewala.connect"
+                  applicationId 'com.dullewalaconnect.app'
                   minSdk 23
                   targetSdk 35
                   versionCode 1
-                  versionName "1.0"
+                  versionName '1.0'
               }
-          }
-
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.7.0'
           }
           EOF
 
           cat > app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-              <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
                   <item name="android:fontFamily">sans</item>
-                  <item name="android:windowLightStatusBar">false</item>
                   <item name="android:statusBarColor">#000000</item>
                   <item name="android:navigationBarColor">#000000</item>
+                  <item name="android:colorAccent">#D4AF37</item>
+                  <item name="android:windowLightStatusBar">false</item>
               </style>
           </resources>
           EOF
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
               <uses-permission android:name="android.permission.INTERNET"/>
-
               <application
-                  android:theme="@style/AppTheme"
                   android:label="Dulle Wala Connect"
+                  android:theme="@style/AppTheme"
                   android:usesCleartextTraffic="true"
-                  android:resizeableActivity="true">
-
+                  android:allowBackup="false">
                   <activity
                       android:name=".MainActivity"
-                      android:screenOrientation="portrait"
-                      android:exported="true">
-
+                      android:exported="true"
+                      android:screenOrientation="portrait">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
-
                   </activity>
-
               </application>
           </manifest>
           EOF
 
-          cat > app/src/main/java/com/dullewala/connect/MainActivity.java <<'EOF'
-          package com.dullewala.connect;
+          cat > app/src/main/java/com/dullewalaconnect/app/MainActivity.java <<'EOF'
+          package com.dullewalaconnect.app;
 
           import android.app.Activity;
           import android.os.Bundle;
@@ -127,13 +143,11 @@ jobs:
           import android.webkit.WebViewClient;
 
           public class MainActivity extends Activity {
-
               private WebView webView;
 
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-
                   webView = new WebView(this);
                   setContentView(webView);
 
@@ -141,17 +155,12 @@ jobs:
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
                   settings.setDatabaseEnabled(true);
-                  settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
-                  settings.setSupportZoom(false);
-                  settings.setBuiltInZoomControls(false);
-                  settings.setDisplayZoomControls(false);
+                  settings.setLoadWithOverviewMode(true);
+                  settings.setUseWideViewPort(true);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
 
                   webView.setWebViewClient(new WebViewClient());
-
-                  webView.loadUrl(
-                      "https://shaikhmuhajir12.github.io/dulle-wala-connect/"
-                  );
+                  webView.loadUrl("https://shaikhmuhajir12.github.io/dulle-wala-connect/");
               }
 
               @Override
@@ -165,19 +174,22 @@ jobs:
           }
           EOF
 
-      - name: Build APK
+      - name: Download Gradle
+        shell: bash
         run: |
-          chmod +x gradlew 2>/dev/null || true
-          if [ ! -f gradlew ]; then
-            wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
-            unzip -q gradle-8.7-bin.zip
-            ./gradle-8.7/bin/gradle wrapper --gradle-version 8.7
-          fi
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          set -e
+          curl -fL --retry 3 -o gradle.zip https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle.zip
+
+      - name: Build APK
+        run: ./gradle-8.7/bin/gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        run: test -f app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Dulle-Wala-Connect-APK
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
